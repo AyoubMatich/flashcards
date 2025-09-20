@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flashcards FR ↔ AR — Cartes double-face</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#06b6d4;--text:#e6eef6}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#071029 0%,#08121a 100%);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:28px}
+    header{width:100%;max-width:1100px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:18px;margin:0}
+    p.lead{opacity:0.85;margin:0 0 0 12px;font-size:13px}
+
+    /* Controls */
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    input[type=search]{padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:var(--text);min-width:220px}
+    button{background:var(--accent);border:0;padding:8px 12px;border-radius:8px;color:#042018;font-weight:600;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text)}
+
+    /* Grid */
+    .grid{width:100%;max-width:1100px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+
+    /* Card */
+    .card-wrap{perspective:1200px}
+    .card{width:100%;height:280px;border-radius:12px;transform-style:preserve-3d;transition:transform .6s;position:relative;cursor:pointer}
+    .card.is-flipped{transform:rotateY(180deg)}
+    .face{position:absolute;inset:0;border-radius:12px;padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;backface-visibility:hidden;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));box-shadow:0 6px 18px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
+    .front{font-size:20px;font-weight:700}
+    .back{transform:rotateY(180deg);gap:8px}
+    .back img{max-width:100%;max-height:140px;border-radius:8px;object-fit:cover}
+    .small{font-size:13px;opacity:0.9}
+
+    /* footer */
+    footer{width:100%;max-width:1100px;margin-top:18px;display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .actions{display:flex;gap:8px}
+
+    /* Print-friendly: two-up cards for duplex printing */
+    @media print{
+      body{background:white;color:black}
+      header,footer,.controls{display:none}
+      .grid{grid-template-columns:repeat(2,50%);gap:6mm}
+      .card{height:85mm;page-break-inside:avoid}
+    }
+
+    /* responsive */
+    @media(max-width:600px){.card{height:220px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Flashcards FR ↔ AR</h1>
+      <p class="lead">انقر على البطاقة لتنقلب — استخدم الأسهم ← → للتنقّل — احفظ أو اطبع البطاقات</p>
+    </div>
+    <div class="controls">
+      <input id="search" type="search" placeholder="بحث عن كلمة (FR أو AR)" />
+      <button id="shuffle">خلط</button>
+      <button id="add" class="ghost">إضافة بطاقة</button>
+      <button id="export">تصدير JSON</button>
+      <button id="print" class="ghost">طباعة</button>
+    </div>
+  </header>
+
+  <main class="grid" id="grid"></main>
+
+  <footer>
+    <div class="small">نُسخة تجريبية — عدِّل الكلمات داخل الكود أو استخدم زر الإضافة.</div>
+    <div class="actions">
+      <button id="prev" class="ghost">← السابق</button>
+      <button id="next" class="ghost">التالي →</button>
+    </div>
+  </footer>
+
+  <template id="card-template">
+    <div class="card-wrap">
+      <div class="card" tabindex="0">
+        <div class="face front"></div>
+        <div class="face back"></div>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    // بيانات البطاقات: يمكنك تعديل هذه القائمة أو إضافتها ديناميكيًا
+    const cards = [
+      {fr: 'paysage', ar: 'منظر طبيعي', img: '🌄'},
+      {fr: 'forêt', ar: 'غابة', img: '🌲'},
+      {fr: 'cascade', ar: 'شلال', img: '💧'},
+      {fr: 'animaux', ar: 'حيوانات', img: '🐾'},
+      {fr: 'beau-père', ar: 'زوج الأم/الأب', img: '👴'},
+      {fr: 'tante', ar: 'عمة/خالة', img: '👩‍🦰'},
+      {fr: 'la maman', ar: 'الأم', img: '👩‍👧'},
+      {fr: 'cousin', ar: 'ابن العم/الخال', img: '👦'},
+      {fr: 'sœur', ar: 'أخت', img: '👧'},
+      {fr: 'affection', ar: 'مودة', img: '❤️'},
+      {fr: 'tendresse', ar: 'حنان', img: '🤗'},
+      {fr: 'amitié', ar: 'صداقة', img: '🤝'},
+      {fr: 'détester', ar: 'يكره', img: '😠'},
+      {fr: 'jalousie', ar: 'غيرة', img: '😒'},
+      {fr: 'racisme', ar: 'عنصرية', img: '🚫'},
+      {fr: 'chérir', ar: 'يُحب بعمق', img: '💕'},
+      {fr: 'douceur', ar: 'لطافة', img: '🌸'},
+      {fr: 'verdure', ar: 'خضرة', img: '🌿'}
+    ];
+
+    // الواجهة
+    const grid = document.getElementById('grid');
+    const tpl = document.getElementById('card-template');
+    const search = document.getElementById('search');
+
+    let filtered = [...cards];
+    let focusedIndex = 0;
+
+    function render(){
+      grid.innerHTML = '';
+      filtered.forEach((c, i) => {
+        const el = tpl.content.cloneNode(true);
+        const wrap = el.querySelector('.card-wrap');
+        const card = el.querySelector('.card');
+        const front = el.querySelector('.front');
+        const back = el.querySelector('.back');
+
+        front.innerHTML = `<div style=\"text-align:center\">${escapeHtml(c.fr)}</div>`;
+        back.innerHTML = `
+          <div style=\"text-align:center;font-size:34px;margin-bottom:10px\">${c.img ? escapeHtml(c.img) : ''}</div>
+          <div style=\"text-align:center; font-weight:700\">${escapeHtml(c.ar)}</div>
+          <div class=\"small\" style=\"margin-top:8px;text-align:center;opacity:0.9\">${escapeHtml(c.fr)}</div>
+        `;
+
+        // flip
+        card.addEventListener('click', ()=> card.classList.toggle('is-flipped'));
+        card.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') card.classList.toggle('is-flipped') });
+
+        // set dataset index for navigation
+        wrap.dataset.index = i;
+        grid.appendChild(el);
+      });
+      focusCard(focusedIndex);
+    }
+
+    function escapeHtml(s){ return String(s).replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c])); }
+
+    // بحث
+    search.addEventListener('input', ()=>{
+      const q = search.value.trim().toLowerCase();
+      filtered = cards.filter(c => c.fr.toLowerCase().includes(q) || c.ar.toLowerCase().includes(q));
+      focusedIndex = 0;
+      render();
+    });
+
+    // أزرار
+    document.getElementById('shuffle').addEventListener('click', ()=>{
+      shuffle(filtered);
+      focusedIndex = 0; render();
+    });
+
+    document.getElementById('add').addEventListener('click', ()=>{
+      const fr = prompt('Entrer la mot en français:'); if(!fr) return;
+      const ar = prompt('الترجمة العربية:'); if(ar===null) return;
+      const img = prompt('صورة — ضع رمز تعبيري أو رابط صورة (اختياري):','');
+      cards.push({fr:fr.trim(), ar:ar.trim(), img: img||''});
+      filtered = [...cards]; render();
+    });
+
+    document.getElementById('export').addEventListener('click', ()=>{
+      const data = JSON.stringify(cards, null, 2);
+      const blob = new Blob([data], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'flashcards_fr_ar.json'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('print').addEventListener('click', ()=> window.print());
+
+    document.getElementById('prev').addEventListener('click', ()=>{ focusedIndex = Math.max(0, focusedIndex-1); focusCard(focusedIndex) });
+    document.getElementById('next').addEventListener('click', ()=>{ focusedIndex = Math.min(filtered.length-1, focusedIndex+1); focusCard(focusedIndex) });
+
+    // keyboard navigation
+    window.addEventListener('keydown', (e)=>{
+      if(e.key==='ArrowRight'){ focusedIndex = Math.min(filtered.length-1, focusedIndex+1); focusCard(focusedIndex) }
+      if(e.key==='ArrowLeft'){ focusedIndex = Math.max(0, focusedIndex-1); focusCard(focusedIndex) }
+    });
+
+    function focusCard(i){
+      const wraps = Array.from(grid.querySelectorAll('.card-wrap'));
+      wraps.forEach((w, idx)=>{
+        const card = w.querySelector('.card');
+        card.classList.remove('focus');
+        if(idx===i){
+          // scroll into view
+          w.scrollIntoView({behavior:'smooth',block:'center'});
+          card.style.outline = '2px solid rgba(6,182,212,0.18)';
+          card.style.boxShadow = '0 12px 36px rgba(2,6,23,0.6)';
+        } else {
+          w.querySelector('.card').style.outline = 'none';
+        }
+      });
+    }
+
+    function shuffle(a){
+      for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
+    }
+
+    // initial render
+    render();
+  </script>
+</body>
+</html>
